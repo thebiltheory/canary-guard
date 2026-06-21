@@ -40,9 +40,11 @@ esac
 YEL=$'\033[33m'; RED=$'\033[1;31m'; DIM=$'\033[2m'; RST=$'\033[0m'
 
 if [ "$state" = "dead" ]; then
-  # Dead: fallen bird, slow-flashing alarm.
-  if [ $(( frame % 2 )) -eq 0 ]; then alarm="⚠ "; else alarm="  "; fi
-  printf '%s💀 (| x_x |) %s%s%sintegrity broken%s\n' "$RED" "$alarm" "$RST" "$DIM" "$RST"
+  # The canary is still a yellow bird — only the cage, skull and alarm go red.
+  # Flash the ⚠ by toggling its colour (constant width, no jiggle).
+  if [ $(( frame % 2 )) -eq 0 ]; then warn="${RED}⚠${RST}"; else warn="${DIM}⚠${RST}"; fi
+  printf '%s💀%s %s(|%s %sx_x%s %s|)%s %s %sintegrity broken%s\n' \
+    "$RED" "$RST" "$RED" "$RST" "$YEL" "$RST" "$RED" "$RST" "$warn" "$DIM" "$RST"
 else
   # Alive: hop left/right, alternating note. Constant width (🐤 is 2 cols + 1 space).
   case "$frame" in
