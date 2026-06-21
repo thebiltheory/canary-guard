@@ -1,6 +1,6 @@
 {
   "name": "canary-guard",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Output-integrity canary: the model ends every response with a per-user secret token, and a Stop hook flags its absence (truncation / injection / drift). Absence is the signal — a present token is not an all-clear.",
   "author": { "name": "Bil Benhamou", "email": "bil.benhamou@gmail.com" },
   "homepage": "https://github.com/thebiltheory/canary-guard",

@@ -105,6 +105,30 @@ chmod +x ~/.claude/scripts/canary-cage.sh
 | **Injection** | Token gone; the model did something you didn't ask — ran a command, fetched a URL — often right after reading untrusted content. | **Stop.** Don't approve pending tool calls. Trace what entered context right before the break, quarantine the source, review everything the turn touched. |
 | **Drift** | Token gone; response otherwise fine and on-task. | Re-issue or regenerate. Tighten wording if it recurs. |
 
+## Continuity: a clean handoff to the next session
+
+A broken canary should make you **start fresh, not silently continue** the
+degraded session — auto-replaying a possibly-injected context just hands the
+payload another attempt. But starting fresh shouldn't cost you your work. So on a
+break, canary-guard writes a handoff to `$CLAUDE_CONFIG_DIR/canary-handoff/`:
+
+- `transcript.jsonl` — the **complete** prior transcript, preserved verbatim
+  (100% fidelity, even if Claude Code later cleans up the original).
+- `handoff.md` — the original prompt, the most recent request, the last
+  (possibly degraded) output, a pointer to the transcript, and a review warning.
+- `PENDING` — a one-shot flag tagged with the project directory.
+
+The **next session you start in the same project** automatically receives the
+handoff via SessionStart `additionalContext`, then the flag is consumed. The new
+session knows the original goal and can read the preserved transcript to recover
+any detail — continuity of *intent and context*, without auto-replaying the
+*corruption*. You can also resume the exact original session at any time with
+`claude --resume <session_id>` (shown in the handoff).
+
+It stays human-gated on purpose: **you** decide when to open the recovery
+session, and the handoff leads with a reminder that if this was injection, the
+transcript may carry a payload — review before trusting it.
+
 ## False positives — what *won't* and *will* trip it
 
 - **Tool-only / silent stops don't fire the `Stop` hook**, and the checker also
