@@ -21,10 +21,16 @@ output canary.
 
 ## How it works
 
+Two hooks, a small shared state file, and an optional status line:
+
 | Hook | Script | What it does |
 |---|---|---|
-| `SessionStart` | `scripts/ensure-canary.sh` | On first run, mints a fresh per-user/per-machine UUID token into `$CLAUDE_CONFIG_DIR/canary-token`. Every run, injects the "append this token to every response" instruction via `additionalContext`. |
-| `Stop` | `scripts/check-canary.sh` | Reads the last assistant message and checks for the token. If missing, emits a non-blocking warning. |
+| `SessionStart` | `scripts/ensure-canary.sh` | Mints a per-user/per-machine UUID token into `$CLAUDE_CONFIG_DIR/canary-token` on first run; every run injects the "append this token to every response" instruction via `additionalContext`, resets `canary-state` to `ok`, and replays any pending handoff for this project (see *Continuity* below). |
+| `Stop` | `scripts/check-canary.sh` | Checks the last assistant message for the token. Present → writes `canary-state=ok`. Missing → writes `canary-state=dead`, captures a handoff bundle (see *Continuity*), and emits a non-blocking warning. |
+
+Shared files under `$CLAUDE_CONFIG_DIR`: **`canary-token`** (the secret),
+**`canary-state`** (`ok`/`dead`, read by the status line), and
+**`canary-handoff/`** (the recovery bundle).
 
 Because `SessionStart` fires on startup / resume / clear / **compact**, the
 instruction is re-injected after a compaction — so it survives context loss
