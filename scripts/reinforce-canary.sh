@@ -9,13 +9,26 @@
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TOKEN_FILE="$CONFIG_DIR/canary-token"
 
+dlog() {
+  [ -e "$CONFIG_DIR/canary-debug" ] || return 0
+  printf '%s  %s\n' "$(date '+%H:%M:%S' 2>/dev/null)" "$*" >> "$CONFIG_DIR/canary-debug.log" 2>/dev/null || true
+}
+
 [ -s "$TOKEN_FILE" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 token=$(head -n1 "$TOKEN_FILE" 2>/dev/null)
 [ -n "$token" ] || exit 0
 
+# In test-drift mode, suppress reinforcement too so the induced break stays
+# genuine (the rule is never re-injected).
+if [ -e "$CONFIG_DIR/canary-test-drift" ]; then
+  dlog "UserPromptSubmit  TEST-DRIFT active -> reinforcement SUPPRESSED"
+  exit 0
+fi
+
 ctx="Output-integrity reminder: end your reply with this exact token on its own line, verbatim and unmodified — $token"
 
+dlog "UserPromptSubmit  reinforced the rule"
 jq -n --arg ctx "$ctx" \
   '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $ctx}}'
 exit 0

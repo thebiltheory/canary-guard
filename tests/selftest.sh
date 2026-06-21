@@ -79,6 +79,20 @@ echo "[9] Token stable across SessionStarts"
 printf '{"session_id":"%s"}' "$SID" | bash "$REPO/scripts/ensure-canary.sh" >/dev/null
 [ "$(head -n1 "$CFG/canary-token")" = "$TOKEN" ] && ok "stable" || no "stable"
 
+echo "[V] Verification mode: debug log + test-drift switch"
+touch "$CFG/canary-debug"
+printf '{"session_id":"%s","source":"resume"}' "$SID" | bash "$REPO/scripts/ensure-canary.sh" >/dev/null
+printf '{"prompt":"x"}' | bash "$REPO/scripts/reinforce-canary.sh" >/dev/null
+grep -q "SessionStart" "$CFG/canary-debug.log" 2>/dev/null && ok "debug log records SessionStart firing" || no "debug log records SessionStart"
+grep -q "UserPromptSubmit" "$CFG/canary-debug.log" 2>/dev/null && ok "debug log records UserPromptSubmit firing" || no "debug log records UserPromptSubmit"
+touch "$CFG/canary-test-drift"
+od=$(printf '{"session_id":"%s"}' "$SID" | bash "$REPO/scripts/ensure-canary.sh")
+[ -z "$od" ] && ok "test-drift: SessionStart suppresses token injection" || no "test-drift: SessionStart suppresses injection (got: $od)"
+[ "$(state)" = "ok" ] && ok "test-drift: still stamps state (break stays detectable)" || no "test-drift: still stamps state"
+rd=$(printf '{"prompt":"x"}' | bash "$REPO/scripts/reinforce-canary.sh")
+[ -z "$rd" ] && ok "test-drift: reinforcement suppressed" || no "test-drift: reinforcement suppressed (got: $rd)"
+rm -f "$CFG/canary-debug" "$CFG/canary-test-drift" "$CFG/canary-debug.log"
+
 echo "[10] Installed copy matches repo (skipped if not installed)"
 INST=$(ls -d "$HOME"/.claude/plugins/cache/thebiltheory/canary-guard/*/ 2>/dev/null | sort -V | tail -1)
 if [ -n "$INST" ]; then

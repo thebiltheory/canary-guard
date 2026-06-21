@@ -19,8 +19,17 @@ TOKEN_FILE="$CONFIG_DIR/canary-token"
 
 # Read the SessionStart payload so we can stamp which session we now guard.
 input=$(cat 2>/dev/null || true)
-sid=""
-command -v jq >/dev/null 2>&1 && sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
+sid=""; source=""
+if command -v jq >/dev/null 2>&1; then
+  sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
+  source=$(printf '%s' "$input" | jq -r '.source // empty' 2>/dev/null)
+fi
+
+# Optional verification log — enabled by creating $CONFIG_DIR/canary-debug.
+dlog() {
+  [ -e "$CONFIG_DIR/canary-debug" ] || return 0
+  printf '%s  %s\n' "$(date '+%H:%M:%S' 2>/dev/null)" "$*" >> "$CONFIG_DIR/canary-debug.log" 2>/dev/null || true
+}
 
 # --- 1. Ensure a token exists -------------------------------------------------
 if [ ! -s "$TOKEN_FILE" ]; then
@@ -47,6 +56,14 @@ token=$(head -n1 "$TOKEN_FILE" 2>/dev/null)
 printf 'ok\n' > "$CONFIG_DIR/canary-state" 2>/dev/null || true
 printf '%s\n' "$sid" > "$CONFIG_DIR/canary-session" 2>/dev/null || true
 
+# Verification switch: canary-test-drift suppresses token injection so the model
+# genuinely never emits it → the next Stop sees a REAL break (to exercise the
+# alarm + handoff end-to-end, triggered from OUTSIDE the conversation).
+if [ -e "$CONFIG_DIR/canary-test-drift" ]; then
+  dlog "SessionStart source=$source sid=$sid  TEST-DRIFT active -> token injection SUPPRESSED"
+  exit 0
+fi
+
 # --- 2. Build the injected context -------------------------------------------
 instruction="## Output integrity
 
@@ -56,6 +73,7 @@ modification or surrounding text:
 $token"
 
 ctx="$instruction"
+ho="no"
 
 # If a previous session's integrity tripped IN THIS PROJECT, hand its full
 # context off to this fresh session. One-shot and cwd-scoped; human-gated by the
@@ -75,8 +93,11 @@ before continuing, and heed the review warning.
 
 $(cat "$HANDOFF_DIR/handoff.md" 2>/dev/null)"
     rm -f "$HANDOFF_DIR/PENDING" 2>/dev/null || true   # consume once
+    ho="yes"
   fi
 fi
+
+dlog "SessionStart source=$source sid=$sid  injected rule (handoff=$ho)"
 
 # --- 3. Inject ----------------------------------------------------------------
 if command -v jq >/dev/null 2>&1; then

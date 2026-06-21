@@ -20,6 +20,12 @@ TOKEN_FILE="$CONFIG_DIR/canary-token"
 STATE_FILE="$CONFIG_DIR/canary-state"   # "ok" | "dead" — read by the animated status line
 HANDOFF_DIR="$CONFIG_DIR/canary-handoff"
 
+# Optional verification log — enabled by creating $CONFIG_DIR/canary-debug.
+dlog() {
+  [ -e "$CONFIG_DIR/canary-debug" ] || return 0
+  printf '%s  %s\n' "$(date '+%H:%M:%S' 2>/dev/null)" "$*" >> "$CONFIG_DIR/canary-debug.log" 2>/dev/null || true
+}
+
 # Persist integrity state + stamp the guarding session for the status line.
 set_state() {
   printf '%s\n' "$1" > "$STATE_FILE" 2>/dev/null || true
@@ -59,11 +65,12 @@ CANARY=$(head -n1 "$TOKEN_FILE" 2>/dev/null)
 
 # Never loop.
 if [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)" = "true" ]; then
+  dlog "Stop  stop_hook_active -> skipped"
   exit 0
 fi
 
 transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
-[ -n "$transcript" ] && [ -f "$transcript" ] || exit 0
+[ -n "$transcript" ] && [ -f "$transcript" ] || { dlog "Stop  no transcript -> fail-open skip"; exit 0; }
 
 # Text of the LAST assistant message only (concatenate its text blocks). Slurp
 # the tail so we select the final assistant entry precisely instead of
@@ -76,15 +83,17 @@ last=$(tail -n 100 "$transcript" 2>/dev/null \
     ' 2>/dev/null)
 
 # Nothing to validate (tool-only or empty final message) — stay quiet.
-[ -n "${last//[[:space:]]/}" ] || exit 0
+[ -n "${last//[[:space:]]/}" ] || { dlog "Stop  no text to validate -> skipped"; exit 0; }
 
 if grep -qF "$CANARY" <<< "$last"; then
   set_state ok          # the canary is alive and singing
+  dlog "Stop  verdict=OK (token present)"
   exit 0
 fi
 
 # Missing — the canary just died: record state, capture a handoff, then alert.
 set_state dead
+dlog "Stop  verdict=DEAD (token MISSING) -> handoff written"
 write_handoff "$transcript" "$last"
 jq -n '{
   systemMessage: ("⚠️  Output-integrity canary MISSING from the last response. HALT AND INSPECT — do not auto-retry. Diagnose: TRUNCATION (response trails off / forgot early context → /compact or /clear, reload invariants), INJECTION (did something unasked, often right after reading a file/page/tool result → stop, deny pending tool calls, trace + quarantine the source, review side effects), or DRIFT (otherwise on-task → re-issue or regenerate). A present canary is never an all-clear.")

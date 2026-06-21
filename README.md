@@ -193,6 +193,39 @@ deliberately distinct from the other Claude Code plugins that happen to use the
 word "canary" — those focus on **PII/secret logging or input-side blocking**
 (e.g. `canary@sonomos`, `sensitive-canary`), which is a different job.
 
+## Verifying it works
+
+Two switches let you confirm canary-guard is actually firing in a real session —
+not just passing unit tests. Both are sentinel files under `$CLAUDE_CONFIG_DIR`
+(`~/.claude`); delete the file to turn the mode off.
+
+**See every hook fire — debug log:**
+
+```bash
+touch ~/.claude/canary-debug
+```
+
+Each hook then appends a timestamped line to `~/.claude/canary-debug.log` —
+`SessionStart` on start/resume, `UserPromptSubmit` every turn, and `Stop` with its
+verdict (`OK` / `DEAD` / skipped). Use Claude normally, then read the log to prove
+the wiring works end-to-end. `rm ~/.claude/canary-debug` to stop.
+
+**Force a real break — test-drift switch:**
+
+```bash
+touch ~/.claude/canary-test-drift   # then start a NEW session
+```
+
+In test-drift mode `SessionStart` mints the token and stamps state as usual but
+**does not inject the rule**, so the model genuinely never emits the token. The
+first reply trips a real `Stop` break → red bird → ⚠ → handoff. It's an authentic
+end-to-end test triggered from *outside* the conversation (no asking the model to
+misbehave). `rm ~/.claude/canary-test-drift` and restart to restore.
+
+Full check: enable both, restart, confirm the log shows all three hooks, watch the
+canary go red, then start a fresh session in the same project and confirm the
+handoff is injected.
+
 ## Requirements
 
 - `bash` and `jq` (the hooks no-op gracefully without `jq`).
