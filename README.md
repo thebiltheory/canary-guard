@@ -1,4 +1,25 @@
-# canary-guard
+# 🐤 canary-guard
+
+```text
+        .--------------.
+        |   __         |
+        |  <o )___     |   ♪
+        |   \ <_  )    |       canary-guard
+        |    `----'    |
+        |   __||__     |   a tripwire for your model's
+        '--------------'   output integrity
+            |      |
+       ======'======'=====
+
+   live:   ♪ (|🐤 |) singing       💀 (| x_x |) integrity broken       · (|🐤 |) idle
+```
+
+![license: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square&logo=anthropic)
+![canary: singing](https://img.shields.io/badge/canary-singing-f6c453?style=flat-square)
+
+> **The model sings a secret word at the end of every reply.**
+> **When it goes quiet, something broke.**
 
 A Claude Code plugin that adds an **output-integrity canary** to every session.
 
@@ -193,4 +214,11 @@ Then delete `~/.claude/canary-token` if you want to discard the token.
 
 ## License
 
-MIT © Bil Benhamou
+MIT © Bil Benhamou · made with 🐤 for Claude Code
+
+```text
+   ♪
+  <o )___   keep him singing.
+   \ <_  )
+    `----'
+```
