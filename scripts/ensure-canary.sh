@@ -37,6 +37,9 @@ fi
 token=$(head -n1 "$TOKEN_FILE" 2>/dev/null)
 [ -n "$token" ] || exit 0
 
+# A fresh session starts healthy — revive the canary for the status line.
+printf 'ok\n' > "$CONFIG_DIR/canary-state" 2>/dev/null || true
+
 # --- 2. Inject the instruction ------------------------------------------------
 instruction="## Output integrity
 

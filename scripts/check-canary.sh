@@ -17,6 +17,10 @@
 
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TOKEN_FILE="$CONFIG_DIR/canary-token"
+STATE_FILE="$CONFIG_DIR/canary-state"   # "ok" | "dead" — read by the animated status line
+
+# Persist integrity state for the (optional) canary-cage status line.
+set_state() { printf '%s\n' "$1" > "$STATE_FILE" 2>/dev/null || true; }
 
 input=$(cat 2>/dev/null) || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
@@ -46,10 +50,12 @@ last=$(tail -n 100 "$transcript" 2>/dev/null \
 [ -n "${last//[[:space:]]/}" ] || exit 0
 
 if grep -qF "$CANARY" <<< "$last"; then
+  set_state ok          # the canary is alive and singing
   exit 0
 fi
 
-# Missing — emit a visible, NON-blocking alert and let the turn end.
+# Missing — the canary just died: record it for the status line, then alert.
+set_state dead
 jq -n '{
   systemMessage: ("⚠️  Output-integrity canary MISSING from the last response. HALT AND INSPECT — do not auto-retry. Diagnose: TRUNCATION (response trails off / forgot early context → /compact or /clear, reload invariants), INJECTION (did something unasked, often right after reading a file/page/tool result → stop, deny pending tool calls, trace + quarantine the source, review side effects), or DRIFT (otherwise on-task → re-issue or regenerate). A present canary is never an all-clear.")
 }'

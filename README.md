@@ -61,6 +61,42 @@ session.
 Then start a new session (or run `/hooks` once to reload). The first session
 mints your token and the model begins appending it.
 
+## Animated status line (optional) — watch the canary live or die
+
+The repo ships `statusline/canary-cage.sh`, a tiny status-line animation that makes
+the canary's health visible at a glance:
+
+- **Integrity OK** → a yellow canary hops and sings ♪ in its cage.
+- **Integrity broken** → a red, fallen canary `x_x` with a flashing ⚠ alarm.
+
+It reflects *real* state, not decoration: `check-canary.sh` (Stop) writes `ok`/`dead`
+to `$CLAUDE_CONFIG_DIR/canary-state` after each turn, and `ensure-canary.sh`
+(SessionStart) revives the canary on a fresh session. If the file is absent (plugin
+not active yet) the canary is assumed healthy — absence of alarm is not an alarm.
+The script honors reduced motion via `$PREFERS_REDUCED_MOTION` (freezes the loop).
+
+Enable it (copy the bundled script to a stable path, then point the status line at it):
+
+```bash
+mkdir -p ~/.claude/scripts
+cp ~/.claude/plugins/cache/thebiltheory/canary-guard/*/statusline/canary-cage.sh ~/.claude/scripts/
+chmod +x ~/.claude/scripts/canary-cage.sh
+```
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/scripts/canary-cage.sh",
+    "refreshInterval": 1
+  }
+}
+```
+
+> The status line is the only Claude Code surface that can animate, and only at
+> ~1 fps (`refreshInterval` minimum is 1 second) — so this is a slow, deliberate
+> "hop," not smooth motion. You can't animate inside the assistant's message area.
+
 ## When the canary goes missing
 
 | Failure | Looks like | Fix |
