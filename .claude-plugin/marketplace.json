@@ -10,7 +10,7 @@
       "name": "canary-guard",
       "source": "./",
       "description": "Output-integrity canary token + Stop-hook validator + animated status line + clean session handoff.",
-      "version": "0.3.1"
+      "version": "0.3.2"
     }
   ]
 }

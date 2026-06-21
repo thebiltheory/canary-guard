@@ -70,16 +70,22 @@ mints your token and the model begins appending it.
 ## Animated status line (optional) — watch the canary live or die
 
 The repo ships `statusline/canary-cage.sh`, a tiny status-line animation that makes
-the canary's health visible at a glance:
+the canary's health visible at a glance — and it is **honest about whether it's
+actually measuring**:
 
-- **Integrity OK** → a yellow canary hops and sings ♪ in its cage.
-- **Integrity broken** → a red, fallen canary `x_x` with a flashing ⚠ alarm.
+- **Guarding + OK** → a yellow canary hops and sings ♪ in its cage.
+- **Guarding + broken** → a red, fallen canary `x_x` with a flashing ⚠ alarm.
+- **Idle** → a dim, perched canary marked `idle` — shown whenever the plugin
+  is **not** validating this session, so it never fakes a healthy verdict.
 
-It reflects *real* state, not decoration: `check-canary.sh` (Stop) writes `ok`/`dead`
-to `$CLAUDE_CONFIG_DIR/canary-state` after each turn, and `ensure-canary.sh`
-(SessionStart) revives the canary on a fresh session. If the file is absent (plugin
-not active yet) the canary is assumed healthy — absence of alarm is not an alarm.
-The script honors reduced motion via `$PREFERS_REDUCED_MOTION` (freezes the loop).
+It reflects *real* state, not decoration. `ensure-canary.sh` (SessionStart) stamps
+the active session id into `$CLAUDE_CONFIG_DIR/canary-session` and writes
+`canary-state=ok`; `check-canary.sh` (Stop) updates `canary-state` to `ok`/`dead`.
+The status line only claims health when the session id Claude Code hands it
+matches the stamped one — a different, stale, or unguarded session renders as
+`idle` rather than borrowing another session's verdict. (If a Claude Code build
+doesn't pass a session id to the status line, it falls back to the last recorded
+state.) Honors reduced motion via `$PREFERS_REDUCED_MOTION` (freezes the loop).
 
 Enable it (copy the bundled script to a stable path, then point the status line at it):
 

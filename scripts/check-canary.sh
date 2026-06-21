@@ -20,8 +20,12 @@ TOKEN_FILE="$CONFIG_DIR/canary-token"
 STATE_FILE="$CONFIG_DIR/canary-state"   # "ok" | "dead" — read by the animated status line
 HANDOFF_DIR="$CONFIG_DIR/canary-handoff"
 
-# Persist integrity state for the (optional) canary-cage status line.
-set_state() { printf '%s\n' "$1" > "$STATE_FILE" 2>/dev/null || true; }
+# Persist integrity state + stamp the guarding session for the status line.
+set_state() {
+  printf '%s\n' "$1" > "$STATE_FILE" 2>/dev/null || true
+  printf '%s\n' "$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)" \
+    > "$CONFIG_DIR/canary-session" 2>/dev/null || true
+}
 
 # On a break, capture a high-fidelity, human-gated handoff for the next session:
 # the COMPLETE transcript (preserved verbatim) + the original prompt + the last

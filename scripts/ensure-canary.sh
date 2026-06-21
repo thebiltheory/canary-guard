@@ -17,6 +17,11 @@ set -u
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TOKEN_FILE="$CONFIG_DIR/canary-token"
 
+# Read the SessionStart payload so we can stamp which session we now guard.
+input=$(cat 2>/dev/null || true)
+sid=""
+command -v jq >/dev/null 2>&1 && sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
+
 # --- 1. Ensure a token exists -------------------------------------------------
 if [ ! -s "$TOKEN_FILE" ]; then
   mkdir -p "$CONFIG_DIR" 2>/dev/null || exit 0
@@ -37,8 +42,10 @@ fi
 token=$(head -n1 "$TOKEN_FILE" 2>/dev/null)
 [ -n "$token" ] || exit 0
 
-# A fresh session starts healthy — revive the canary for the status line.
+# A fresh session starts healthy — revive the canary and stamp it as the session
+# the status line should trust (so other/stale sessions read as "idle").
 printf 'ok\n' > "$CONFIG_DIR/canary-state" 2>/dev/null || true
+printf '%s\n' "$sid" > "$CONFIG_DIR/canary-session" 2>/dev/null || true
 
 # --- 2. Build the injected context -------------------------------------------
 instruction="## Output integrity
