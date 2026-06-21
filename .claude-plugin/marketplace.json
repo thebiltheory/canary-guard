@@ -1,5 +1,5 @@
 {
-  "name": "canary",
+  "name": "thebiltheory",
   "owner": { "name": "Bil Benhamou", "email": "bil.benhamou@gmail.com" },
   "metadata": {
     "description": "Bil's Claude Code plugins.",
@@ -7,7 +7,7 @@
   },
   "plugins": [
     {
-      "name": "output-canary",
+      "name": "canary-guard",
       "source": "./",
       "description": "Output-integrity canary token + Stop-hook validator.",
       "version": "0.1.0"

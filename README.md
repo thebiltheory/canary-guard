@@ -1,4 +1,4 @@
-# output-canary
+# canary-guard
 
 A Claude Code plugin that adds an **output-integrity canary** to every session.
 
@@ -54,8 +54,8 @@ session.
 ## Install
 
 ```
-/plugin marketplace add thebiltheory/claude-output-canary
-/plugin install output-canary@canary
+/plugin marketplace add thebiltheory/canary-guard
+/plugin install canary-guard@thebiltheory
 ```
 
 Then start a new session (or run `/hooks` once to reload). The first session
@@ -68,6 +68,36 @@ mints your token and the model begins appending it.
 | **Truncation** | Token gone; response trails off or forgot something set up earlier. | `/compact` or `/clear`; reload your invariants. Trim the session if frequent. |
 | **Injection** | Token gone; the model did something you didn't ask — ran a command, fetched a URL — often right after reading untrusted content. | **Stop.** Don't approve pending tool calls. Trace what entered context right before the break, quarantine the source, review everything the turn touched. |
 | **Drift** | Token gone; response otherwise fine and on-task. | Re-issue or regenerate. Tighten wording if it recurs. |
+
+## False positives — what *won't* and *will* trip it
+
+- **Tool-only / silent stops don't fire the `Stop` hook**, and the checker also
+  stays silent when the last assistant message has no text — so a turn that ends
+  on a tool call won't false-alarm.
+- It **will** warn on any turn where the model legitimately doesn't echo the
+  token — e.g. the first responses before it has adopted the instruction, or a
+  one-off where it simply forgets (drift). Treat early warnings as expected noise,
+  not an incident. Remember the asymmetry: absence is a *prompt to look*, not proof
+  of compromise.
+
+## Prior art & how this differs
+
+The underlying technique — *instruct the model to append a token to every
+response and treat its absence as evidence of override* — is **established prior
+art**, not invented here:
+
+- **Thinkst Canarytokens** — <https://canarytokens.org> — origin of the
+  "canary token" term (network/file tripwires).
+- **OWASP LLM Top 10** — canary tokens proposed as a prompt-injection mitigation.
+- **Rebuff** (Protect AI) — <https://github.com/protectai/rebuff> — injects canary
+  tokens to detect prompt-injection / system-prompt *leakage*.
+
+What's new here is the **packaging and framing**: a Claude Code `SessionStart` →
+`Stop` hook pair aimed at **output integrity** (did the response actually finish
+and stay on-rails?) rather than secret exfiltration or input filtering. It's
+deliberately distinct from the other Claude Code plugins that happen to use the
+word "canary" — those focus on **PII/secret logging or input-side blocking**
+(e.g. `canary@sonomos`, `sensitive-canary`), which is a different job.
 
 ## Requirements
 
@@ -83,7 +113,7 @@ mints your token and the model begins appending it.
 ## Uninstall
 
 ```
-/plugin uninstall output-canary@canary
+/plugin uninstall canary-guard@thebiltheory
 ```
 
 Then delete `~/.claude/canary-token` if you want to discard the token.
