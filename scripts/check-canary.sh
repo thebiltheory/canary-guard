@@ -32,7 +32,7 @@ set_state() {
 # exchange + a review warning. The next session's SessionStart injects this, and
 # the model reads the preserved transcript to recover 100% of the context.
 write_handoff() {
-  local transcript="$1" last_txt="$2" reason="${3:-unknown}" sid orig lastuser
+  local transcript="$1" last_txt="$2" sid orig lastuser
   mkdir -p "$HANDOFF_DIR" 2>/dev/null || return 0
   cp "$transcript" "$HANDOFF_DIR/transcript.jsonl" 2>/dev/null || true
   sid=$(printf '%s' "$input" | jq -r '.session_id // "unknown"' 2>/dev/null)
@@ -40,7 +40,7 @@ write_handoff() {
   lastuser=$(tail -n 300 "$transcript" 2>/dev/null | jq -rs 'map(select(.message.role=="user")) | last // empty | .message.content | if type=="string" then . elif type=="array" then (map(.text // empty)|join("\n")) else tostring end' 2>/dev/null)
   {
     printf '# canary-guard handoff — integrity tripped\n\n'
-    printf -- '- Session: %s\n- Project (cwd): %s\n- Why: output-integrity canary broke — %s (start/end token check).\n\n' "$sid" "$PWD" "$reason"
+    printf -- '- Session: %s\n- Project (cwd): %s\n- Why: output-integrity canary MISSING from the last response (truncation / injection / drift).\n\n' "$sid" "$PWD"
     printf '## Original request (initial prompt)\n\n%s\n\n' "${orig:-<unavailable>}"
     printf '## Most recent request\n\n%s\n\n' "${lastuser:-<unavailable>}"
     printf '## Last assistant output (possibly degraded — review)\n\n%s\n\n' "${last_txt:-<empty>}"
@@ -78,27 +78,15 @@ last=$(tail -n 100 "$transcript" 2>/dev/null \
 # Nothing to validate (tool-only or empty final message) — stay quiet.
 [ -n "${last//[[:space:]]/}" ] || exit 0
 
-# Two checkpoints: the token must be the FIRST and the LAST non-blank line.
-first_line=$(printf '%s\n' "$last" | awk 'NF{print; exit}')
-last_line=$(printf '%s\n'  "$last" | awk 'NF{l=$0} END{print l}')
-has_start=0; printf '%s' "$first_line" | grep -qF "$CANARY" && has_start=1
-has_end=0;   printf '%s' "$last_line"  | grep -qF "$CANARY" && has_end=1
-
-if [ "$has_start" = 1 ] && [ "$has_end" = 1 ]; then
-  set_state ok          # opened and closed correctly — alive and singing
+if grep -qF "$CANARY" <<< "$last"; then
+  set_state ok          # the canary is alive and singing
   exit 0
 fi
 
-# Broken — classify by which checkpoint failed, then record + capture + alert.
-if [ "$has_start" = 1 ] && [ "$has_end" = 0 ]; then
-  reason="truncation"
-  msg="⚠️  Output-integrity canary: the OPENING token is present but the CLOSING token is gone — the reply was CUT OFF (truncation). Earlier context is likely intact: /compact or continue and reload invariants. Not an injection signal on its own."
-else
-  reason="not-engaged"
-  msg="⚠️  Output-integrity canary: the OPENING token is MISSING — the model did not follow the integrity rule this turn. Could be benign DRIFT (forgot to prepend) or a HIJACK. If this turn read a file / web page / tool result, treat it as possible INJECTION: HALT, do not approve pending tool calls, trace what entered context. Otherwise re-issue. A present canary is never an all-clear."
-fi
+# Missing — the canary just died: record state, capture a handoff, then alert.
 set_state dead
-printf '%s\n' "$reason" > "$CONFIG_DIR/canary-reason" 2>/dev/null || true
-write_handoff "$transcript" "$last" "$reason"
-jq -n --arg m "$msg" '{ systemMessage: $m }'
+write_handoff "$transcript" "$last"
+jq -n '{
+  systemMessage: ("⚠️  Output-integrity canary MISSING from the last response. HALT AND INSPECT — do not auto-retry. Diagnose: TRUNCATION (response trails off / forgot early context → /compact or /clear, reload invariants), INJECTION (did something unasked, often right after reading a file/page/tool result → stop, deny pending tool calls, trace + quarantine the source, review side effects), or DRIFT (otherwise on-task → re-issue or regenerate). A present canary is never an all-clear.")
+}'
 exit 0

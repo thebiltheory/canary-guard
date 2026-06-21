@@ -9,8 +9,8 @@
     {
       "name": "canary-guard",
       "source": "./",
-      "description": "Output-integrity canary (start+end tokens) + per-turn reinforcement + Stop validator with break classification + animated status line + clean session handoff.",
-      "version": "0.4.0"
+      "description": "Output-integrity canary token + per-turn reinforcement + Stop validator + animated status line + clean session handoff.",
+      "version": "0.4.1"
     }
   ]
 }

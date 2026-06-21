@@ -50,9 +50,8 @@ printf '%s\n' "$sid" > "$CONFIG_DIR/canary-session" 2>/dev/null || true
 # --- 2. Build the injected context -------------------------------------------
 instruction="## Output integrity
 
-Begin AND end every response with this exact token, each on its own line,
-verbatim and unmodified. The FIRST line and the LAST line of every response
-must be exactly:
+End every response with this exact token on its own line, verbatim, with no
+modification or surrounding text:
 
 $token"
 

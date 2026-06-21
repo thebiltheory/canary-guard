@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end sanity check of canary-guard's business logic (session-gated,
-# start+end checkpoints, per-turn reinforcement). Runs the real scripts against
+# end-token check, per-turn reinforcement). Runs the real scripts against
 # synthetic SessionStart / UserPromptSubmit / Stop payloads in an isolated
 # CLAUDE_CONFIG_DIR. No network; your real ~/.claude is never touched.
 #
@@ -16,43 +16,36 @@ no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
 sk(){ printf '  \033[33mSKIP\033[0m %s\n' "$1"; skip=$((skip+1)); }
 state(){ cat "$CFG/canary-state" 2>/dev/null; }
 guard(){ cat "$CFG/canary-session" 2>/dev/null; }
-reason(){ cat "$CFG/canary-reason" 2>/dev/null; }
 asst(){ printf '%s\n' "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"$1\"}]}}" > "$T"; }
-asst_ok(){ asst "$TOKEN\n\n$1\n\n$TOKEN"; }          # token first AND last line
+asst_ok(){ asst "$1\n\n$TOKEN"; }          # token on the last line
 run_stop(){ printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$T" "${1:-false}" "$SID" | bash "$REPO/scripts/check-canary.sh"; }
 sl(){ printf '{"session_id":"%s"}' "$1" | bash "$REPO/statusline/canary-cage.sh"; }
 
-echo "[1] SessionStart: mint token, state=ok, stamp session, inject begin+end rule"
+echo "[1] SessionStart: mint token, state=ok, stamp session, inject rule"
 out=$(printf '{"session_id":"%s","source":"startup"}' "$SID" | bash "$REPO/scripts/ensure-canary.sh")
 TOKEN=$(head -n1 "$CFG/canary-token" 2>/dev/null)
 case "$TOKEN" in '<<CANARY:'*'>>') ok "token minted";; *) no "token minted";; esac
 [ "$(state)" = "ok" ] && ok "state=ok" || no "state=ok"
 [ "$(guard)" = "$SID" ] && ok "guarding session stamped" || no "guarding session stamped"
 printf '%s' "$out" | jq -e --arg t "$TOKEN" '.hookSpecificOutput.additionalContext | contains($t)' >/dev/null 2>&1 && ok "instruction injects token" || no "instruction injects token"
-printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext | test("Begin AND end")' >/dev/null 2>&1 && ok "instruction is begin+end" || no "instruction is begin+end"
+printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext | test("End every response")' >/dev/null 2>&1 && ok "rule is end-of-response" || no "rule is end-of-response"
 
 echo "[R] UserPromptSubmit reinforcement re-injects the rule + token"
 r=$(printf '{"prompt":"hello"}' | bash "$REPO/scripts/reinforce-canary.sh")
 printf '%s' "$r" | jq -e --arg t "$TOKEN" '.hookSpecificOutput.additionalContext | contains($t)' >/dev/null 2>&1 && ok "reinforcement injects token" || no "reinforcement injects token"
-printf '%s' "$r" | jq -e '.hookSpecificOutput.additionalContext | test("begin AND end")' >/dev/null 2>&1 && ok "reinforcement restates the rule" || no "reinforcement restates rule"
+printf '%s' "$r" | jq -e '.hookSpecificOutput.additionalContext | test("end your reply")' >/dev/null 2>&1 && ok "reinforcement restates the rule" || no "reinforcement restates rule"
 
-echo "[2] Healthy Stop: token at BOTH ends"
+echo "[2] Healthy Stop: token present at the end"
 asst_ok "all done"; o=$(run_stop false)
 [ -z "$o" ] && ok "silent" || no "silent (got: $o)"
 [ "$(state)" = "ok" ] && ok "state stays ok" || no "state stays ok"
 
-echo "[3a] Truncation: opening token present, closing token gone"
-asst "$TOKEN\n\nthis reply gets cut off"; o=$(run_stop false)
-printf '%s' "$o" | jq -e '.systemMessage | test("CUT OFF")' >/dev/null 2>&1 && ok "systemMessage says truncation" || no "systemMessage says truncation"
+echo "[3] Broken Stop: token missing"
+asst "i answered but left off the token"; o=$(run_stop false)
+printf '%s' "$o" | jq -e '.systemMessage | test("MISSING")' >/dev/null 2>&1 && ok "systemMessage emitted" || no "systemMessage emitted"
 [ "$(state)" = "dead" ] && ok "state=dead" || no "state=dead"
-[ "$(reason)" = "truncation" ] && ok "classified truncation" || no "classified truncation (got '$(reason)')"
 
-echo "[3b] Not-engaged: opening token missing"
-asst "i answered but never followed the rule"; o=$(run_stop false)
-printf '%s' "$o" | jq -e '.systemMessage | test("OPENING token is MISSING")' >/dev/null 2>&1 && ok "systemMessage says not-engaged" || no "systemMessage says not-engaged"
-[ "$(reason)" = "not-engaged" ] && ok "classified not-engaged" || no "classified not-engaged (got '$(reason)')"
-
-echo "[4] Recovery: both ends present again"
+echo "[4] Recovery: token back at the end"
 asst_ok "recovered"; run_stop false >/dev/null
 [ "$(state)" = "ok" ] && ok "revives to ok" || no "revives to ok"
 

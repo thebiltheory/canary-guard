@@ -1,5 +1,5 @@
 {
-  "description": "Output-integrity canary: SessionStart mints + injects the per-user token; UserPromptSubmit reinforces the rule each turn; Stop validates the start+end tokens and classifies any break (truncation vs not-engaged).",
+  "description": "Output-integrity canary: SessionStart mints + injects the per-user token; UserPromptSubmit reinforces the rule each turn; Stop validates the token in the last response.",
   "hooks": {
     "SessionStart": [
       {

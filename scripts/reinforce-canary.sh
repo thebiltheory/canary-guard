@@ -14,7 +14,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 token=$(head -n1 "$TOKEN_FILE" 2>/dev/null)
 [ -n "$token" ] || exit 0
 
-ctx="Output-integrity reminder: begin AND end your reply with this exact token, each on its own line, verbatim and unmodified — $token"
+ctx="Output-integrity reminder: end your reply with this exact token on its own line, verbatim and unmodified — $token"
 
 jq -n --arg ctx "$ctx" \
   '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $ctx}}'
