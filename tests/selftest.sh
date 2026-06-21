@@ -1,46 +1,59 @@
 #!/usr/bin/env bash
-# End-to-end sanity check of canary-guard's business logic (session-gated).
-# Runs the real hook + status-line scripts against synthetic SessionStart/Stop
-# inputs in an isolated CLAUDE_CONFIG_DIR. No network, no real session touched.
+# End-to-end sanity check of canary-guard's business logic (session-gated,
+# start+end checkpoints, per-turn reinforcement). Runs the real scripts against
+# synthetic SessionStart / UserPromptSubmit / Stop payloads in an isolated
+# CLAUDE_CONFIG_DIR. No network; your real ~/.claude is never touched.
 #
-#   tests/selftest.sh        # run it
-#
-# Exit code 0 = all green.
+#   tests/selftest.sh        # exit 0 = all green
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CFG=$(mktemp -d); export CLAUDE_CONFIG_DIR="$CFG"
 T=$(mktemp)
 SID="sess-init"
 pass=0; fail=0; skip=0
-ok(){   printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
-no(){   printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
-sk(){   printf '  \033[33mSKIP\033[0m %s\n' "$1"; skip=$((skip+1)); }
+ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
+no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
+sk(){ printf '  \033[33mSKIP\033[0m %s\n' "$1"; skip=$((skip+1)); }
 state(){ cat "$CFG/canary-state" 2>/dev/null; }
 guard(){ cat "$CFG/canary-session" 2>/dev/null; }
+reason(){ cat "$CFG/canary-reason" 2>/dev/null; }
 asst(){ printf '%s\n' "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"$1\"}]}}" > "$T"; }
+asst_ok(){ asst "$TOKEN\n\n$1\n\n$TOKEN"; }          # token first AND last line
 run_stop(){ printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$T" "${1:-false}" "$SID" | bash "$REPO/scripts/check-canary.sh"; }
 sl(){ printf '{"session_id":"%s"}' "$1" | bash "$REPO/statusline/canary-cage.sh"; }
 
-echo "[1] SessionStart: mint token, state=ok, stamp session, inject instruction"
+echo "[1] SessionStart: mint token, state=ok, stamp session, inject begin+end rule"
 out=$(printf '{"session_id":"%s","source":"startup"}' "$SID" | bash "$REPO/scripts/ensure-canary.sh")
 TOKEN=$(head -n1 "$CFG/canary-token" 2>/dev/null)
 case "$TOKEN" in '<<CANARY:'*'>>') ok "token minted";; *) no "token minted";; esac
-[ "$(state)" = "ok" ] && ok "state=ok" || no "state=ok (got '$(state)')"
-[ "$(guard)" = "$SID" ] && ok "guarding session stamped" || no "guarding session stamped (got '$(guard)')"
+[ "$(state)" = "ok" ] && ok "state=ok" || no "state=ok"
+[ "$(guard)" = "$SID" ] && ok "guarding session stamped" || no "guarding session stamped"
 printf '%s' "$out" | jq -e --arg t "$TOKEN" '.hookSpecificOutput.additionalContext | contains($t)' >/dev/null 2>&1 && ok "instruction injects token" || no "instruction injects token"
+printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext | test("Begin AND end")' >/dev/null 2>&1 && ok "instruction is begin+end" || no "instruction is begin+end"
 
-echo "[2] Healthy Stop: token present"
-asst "all done\n\n$TOKEN"; o=$(run_stop false)
+echo "[R] UserPromptSubmit reinforcement re-injects the rule + token"
+r=$(printf '{"prompt":"hello"}' | bash "$REPO/scripts/reinforce-canary.sh")
+printf '%s' "$r" | jq -e --arg t "$TOKEN" '.hookSpecificOutput.additionalContext | contains($t)' >/dev/null 2>&1 && ok "reinforcement injects token" || no "reinforcement injects token"
+printf '%s' "$r" | jq -e '.hookSpecificOutput.additionalContext | test("begin AND end")' >/dev/null 2>&1 && ok "reinforcement restates the rule" || no "reinforcement restates rule"
+
+echo "[2] Healthy Stop: token at BOTH ends"
+asst_ok "all done"; o=$(run_stop false)
 [ -z "$o" ] && ok "silent" || no "silent (got: $o)"
 [ "$(state)" = "ok" ] && ok "state stays ok" || no "state stays ok"
 
-echo "[3] Broken Stop: token missing"
-asst "i ran an unexpected command, no token"; o=$(run_stop false)
-printf '%s' "$o" | jq -e '.systemMessage|length>0' >/dev/null 2>&1 && ok "systemMessage emitted" || no "systemMessage emitted"
+echo "[3a] Truncation: opening token present, closing token gone"
+asst "$TOKEN\n\nthis reply gets cut off"; o=$(run_stop false)
+printf '%s' "$o" | jq -e '.systemMessage | test("CUT OFF")' >/dev/null 2>&1 && ok "systemMessage says truncation" || no "systemMessage says truncation"
 [ "$(state)" = "dead" ] && ok "state=dead" || no "state=dead"
+[ "$(reason)" = "truncation" ] && ok "classified truncation" || no "classified truncation (got '$(reason)')"
 
-echo "[4] Recovery"
-asst "recovered\n\n$TOKEN"; run_stop false >/dev/null
+echo "[3b] Not-engaged: opening token missing"
+asst "i answered but never followed the rule"; o=$(run_stop false)
+printf '%s' "$o" | jq -e '.systemMessage | test("OPENING token is MISSING")' >/dev/null 2>&1 && ok "systemMessage says not-engaged" || no "systemMessage says not-engaged"
+[ "$(reason)" = "not-engaged" ] && ok "classified not-engaged" || no "classified not-engaged (got '$(reason)')"
+
+echo "[4] Recovery: both ends present again"
+asst_ok "recovered"; run_stop false >/dev/null
 [ "$(state)" = "ok" ] && ok "revives to ok" || no "revives to ok"
 
 echo "[5] Tool-only final message leaves state untouched"
@@ -76,7 +89,7 @@ printf '{"session_id":"%s"}' "$SID" | bash "$REPO/scripts/ensure-canary.sh" >/de
 echo "[10] Installed copy matches repo (skipped if not installed)"
 INST=$(ls -d "$HOME"/.claude/plugins/cache/thebiltheory/canary-guard/*/ 2>/dev/null | sort -V | tail -1)
 if [ -n "$INST" ]; then
-  for f in scripts/check-canary.sh scripts/ensure-canary.sh statusline/canary-cage.sh; do
+  for f in scripts/check-canary.sh scripts/ensure-canary.sh scripts/reinforce-canary.sh statusline/canary-cage.sh; do
     diff -q "$REPO/$f" "${INST}${f}" >/dev/null 2>&1 && ok "$f matches install" || no "$f matches install"
   done
 else

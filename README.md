@@ -2,7 +2,7 @@
 
 A Claude Code plugin that adds an **output-integrity canary** to every session.
 
-The model is instructed to end every response with a unique, unguessable token.
+The model is instructed to begin and end every response with a unique, unguessable token.
 A `Stop` hook checks for it. If the token goes **missing**, you get a signal that
 something broke: truncation, prompt injection, or drift.
 
@@ -21,15 +21,17 @@ output canary.
 
 ## How it works
 
-Two hooks, a small shared state file, and an optional status line:
+Three hooks, a small shared state file, and an optional status line:
 
 | Hook | Script | What it does |
 |---|---|---|
-| `SessionStart` | `scripts/ensure-canary.sh` | Mints a per-user/per-machine UUID token into `$CLAUDE_CONFIG_DIR/canary-token` on first run; every run injects the "append this token to every response" instruction via `additionalContext`, resets `canary-state` to `ok`, and replays any pending handoff for this project (see *Continuity* below). |
-| `Stop` | `scripts/check-canary.sh` | Checks the last assistant message for the token. Present → writes `canary-state=ok`. Missing → writes `canary-state=dead`, captures a handoff bundle (see *Continuity*), and emits a non-blocking warning. |
+| `SessionStart` | `scripts/ensure-canary.sh` | Mints a per-user/per-machine UUID token into `$CLAUDE_CONFIG_DIR/canary-token` on first run; every run injects the "**begin AND end** every response with this token" rule via `additionalContext`, resets `canary-state` to `ok`, stamps the guarded session, and replays any pending handoff for this project (see *Continuity*). |
+| `UserPromptSubmit` | `scripts/reinforce-canary.sh` | Re-injects the rule on every turn so it stays recent and compliance doesn't decay as the session grows (recency reinforcement — re-reading the rule, not just re-emitting a nonce). |
+| `Stop` | `scripts/check-canary.sh` | Checks the **first and last** non-blank line of the reply for the token. Both present → `canary-state=ok`. Otherwise → `canary-state=dead`, classifies the break (**start ✓ / end ✗ = truncation**; **start ✗ = not-engaged / possible hijack**), captures a handoff bundle (see *Continuity*), and emits a non-blocking warning. |
 
 Shared files under `$CLAUDE_CONFIG_DIR`: **`canary-token`** (the secret),
-**`canary-state`** (`ok`/`dead`, read by the status line), and
+**`canary-state`** (`ok`/`dead`, read by the status line), **`canary-reason`**
+(last break's classification), **`canary-session`** (the guarded session id), and
 **`canary-handoff/`** (the recovery bundle).
 
 Because `SessionStart` fires on startup / resume / clear / **compact**, the
