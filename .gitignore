@@ -1,0 +1,7 @@
+# The canary token is per-user and lives in $CLAUDE_CONFIG_DIR (~/.claude),
+# never in this repo. These patterns are belt-and-suspenders so a token can
+# never be committed by accident.
+canary-token
+*.token
+
+.DS_Store
