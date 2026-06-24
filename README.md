@@ -46,13 +46,13 @@ Three hooks, a small shared state file, and an optional status line:
 
 | Hook | Script | What it does |
 |---|---|---|
-| `SessionStart` | `scripts/ensure-canary.sh` | Mints a per-user/per-machine UUID token into `$CLAUDE_CONFIG_DIR/canary-token` on first run; every run injects the "end every response with this token" rule via `additionalContext`, resets `canary-state` to `ok`, stamps the guarded session, and replays any pending handoff for this project (see *Continuity*). |
+| `SessionStart` | `scripts/ensure-canary.sh` | Mints a per-user/per-machine UUID token into `$CLAUDE_CONFIG_DIR/canary-token` on first run; every run injects the "end every response with this token" rule via `additionalContext`, records this session's health as `ok` (keyed by its transcript), and replays any pending handoff for this project (see *Continuity*). |
 | `UserPromptSubmit` | `scripts/reinforce-canary.sh` | Re-injects the rule on every turn so it stays recent and compliance doesn't decay as the session grows (recency reinforcement — re-reading the rule, not just re-emitting a nonce). |
-| `Stop` | `scripts/check-canary.sh` | Checks the last assistant message for the token. Present → `canary-state=ok`. Missing → `canary-state=dead`, captures a handoff bundle (see *Continuity*), and emits a non-blocking warning. |
+| `Stop` | `scripts/check-canary.sh` | Checks the last assistant message for the token. Present → records this session `ok`. Missing → records `dead`, captures a handoff bundle (see *Continuity*), and emits a non-blocking warning. |
 
 Shared files under `$CLAUDE_CONFIG_DIR`: **`canary-token`** (the secret),
-**`canary-state`** (`ok`/`dead`, read by the status line), **`canary-session`**
-(the guarded session id), and **`canary-handoff/`** (the recovery bundle).
+**`canary-sessions/`** (per-session `ok`/`dead` health, keyed by transcript — what
+the status line reads), and **`canary-handoff/`** (the recovery bundle).
 
 Because `SessionStart` fires on startup / resume / clear / **compact**, the
 instruction is re-injected after a compaction — so it survives context loss
@@ -100,14 +100,14 @@ actually measuring**:
 - **Idle** → a dim, perched canary marked `idle` — shown whenever the plugin
   is **not** validating this session, so it never fakes a healthy verdict.
 
-It reflects *real* state, not decoration. `ensure-canary.sh` (SessionStart) stamps
-the active session id into `$CLAUDE_CONFIG_DIR/canary-session` and writes
-`canary-state=ok`; `check-canary.sh` (Stop) updates `canary-state` to `ok`/`dead`.
-The status line only claims health when the session id Claude Code hands it
-matches the stamped one — a different, stale, or unguarded session renders as
-`idle` rather than borrowing another session's verdict. (If a Claude Code build
-doesn't pass a session id to the status line, it falls back to the last recorded
-state.) Honors reduced motion via `$PREFERS_REDUCED_MOTION` (freezes the loop).
+It reflects *real, per-session* state. Each session's health (`ok`/`dead`) is
+recorded under `$CLAUDE_CONFIG_DIR/canary-sessions/`, keyed by that session's
+transcript — so concurrent sessions never fight over a single global flag, and an
+idle session keeps its own verdict instead of being stolen into `idle` when
+another session acts. The status line reads the file for *its own* transcript; no
+file yet → `idle`. (If a Claude Code build doesn't pass a transcript path to the
+status line, it falls back to the global `canary-state`.) Honors reduced motion
+via `$PREFERS_REDUCED_MOTION` (freezes the loop).
 
 Enable it (copy the bundled script to a stable path, then point the status line at it):
 

@@ -19,10 +19,11 @@ TOKEN_FILE="$CONFIG_DIR/canary-token"
 
 # Read the SessionStart payload so we can stamp which session we now guard.
 input=$(cat 2>/dev/null || true)
-sid=""; source=""
+sid=""; source=""; tp=""
 if command -v jq >/dev/null 2>&1; then
   sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
   source=$(printf '%s' "$input" | jq -r '.source // empty' 2>/dev/null)
+  tp=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 fi
 
 # Optional verification log — enabled by creating $CONFIG_DIR/canary-debug.
@@ -51,10 +52,16 @@ fi
 token=$(head -n1 "$TOKEN_FILE" 2>/dev/null)
 [ -n "$token" ] || exit 0
 
-# A fresh session starts healthy — revive the canary and stamp it as the session
-# the status line should trust (so other/stale sessions read as "idle").
-printf 'ok\n' > "$CONFIG_DIR/canary-state" 2>/dev/null || true
-printf '%s\n' "$sid" > "$CONFIG_DIR/canary-session" 2>/dev/null || true
+# A fresh session starts healthy. Record health PER SESSION (keyed by this
+# session's transcript) so concurrent sessions don't fight over a single flag and
+# an idle session keeps its own verdict instead of getting stuck on "idle".
+printf 'ok\n' > "$CONFIG_DIR/canary-state" 2>/dev/null || true   # global fallback
+if [ -n "$tp" ]; then
+  mkdir -p "$CONFIG_DIR/canary-sessions" 2>/dev/null || true
+  printf 'ok\n' > "$CONFIG_DIR/canary-sessions/$(basename "$tp")" 2>/dev/null || true
+fi
+# Prune stale per-session files so the directory stays small.
+find "$CONFIG_DIR/canary-sessions" -type f -mtime +7 -delete 2>/dev/null || true
 
 # Verification switch: canary-test-drift suppresses token injection so the model
 # genuinely never emits it → the next Stop sees a REAL break (to exercise the

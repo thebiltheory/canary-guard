@@ -10,7 +10,7 @@
       "name": "canary-guard",
       "source": "./",
       "description": "Output-integrity canary token + per-turn reinforcement + Stop validator + animated status line + clean session handoff + verification mode (debug log & test-drift switch).",
-      "version": "0.5.0"
+      "version": "0.6.0"
     }
   ]
 }
