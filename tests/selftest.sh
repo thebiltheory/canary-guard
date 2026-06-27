@@ -48,6 +48,12 @@ echo "[4] Recovery"
 asst_ok "recovered"; run_stop false >/dev/null
 [ "$(psess "$T")" = "ok" ] && ok "revives to ok" || no "revives to ok"
 
+echo "[S] Tool-terminated turn (subagent / background-agent launch) is NOT a false alarm"
+printf 'ok\n' > "$CFG/canary-sessions/$(basename "$T")"
+printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I will launch a research subagent now."},{"type":"tool_use","id":"t1","name":"Agent","input":{}}]}}' > "$T"
+o=$(run_stop false)
+[ -z "$o" ] && [ "$(psess "$T")" = "ok" ] && ok "text + tool_use turn -> skipped (no false dead)" || no "tool-terminated turn falsely alarmed (out: $o)"
+
 echo "[5] Tool-only final message leaves state untouched"
 printf 'dead\n' > "$CFG/canary-sessions/$(basename "$T")"
 printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Bash","input":{}}]}}' > "$T"

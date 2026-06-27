@@ -87,7 +87,14 @@ last=$(tail -n 100 "$transcript" 2>/dev/null \
       | if type == "array" then (map(.text // empty) | join("\n")) else tostring end
     ' 2>/dev/null)
 
-# Nothing to validate (tool-only or empty final message) — stay quiet.
+# Did the turn end on a tool call (spawning a subagent / background agent, or any
+# mid-step tool use)? Then this is NOT a final prose response and the token is not
+# expected — skip, so subagent and background-agent workflows don't false-alarm.
+has_tool=$(tail -n 100 "$transcript" 2>/dev/null | jq -rs \
+  '[.[] | select(.message.role == "assistant")] | last // empty | ((.message.content // []) | any(.type == "tool_use")) // false' 2>/dev/null)
+[ "$has_tool" = "true" ] && { dlog "Stop  tool-terminated turn (e.g. subagent launch) -> skipped"; exit 0; }
+
+# Nothing to validate (empty final message) — stay quiet.
 [ -n "${last//[[:space:]]/}" ] || { dlog "Stop  no text to validate -> skipped"; exit 0; }
 
 if grep -qF "$CANARY" <<< "$last"; then

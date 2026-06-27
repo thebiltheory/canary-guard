@@ -165,9 +165,11 @@ transcript may carry a payload — review before trusting it.
 
 ## False positives — what *won't* and *will* trip it
 
-- **Tool-only / silent stops don't fire the `Stop` hook**, and the checker also
-  stays silent when the last assistant message has no text — so a turn that ends
-  on a tool call won't false-alarm.
+- **Turns that end on a tool call don't alarm.** The `Stop` check skips any final
+  assistant message that contains a tool call (and any message with no text) — so
+  multi-step, subagent, and background-agent workflows (where a turn often ends by
+  launching a tool or agent) won't false-alarm. The token is only expected on a
+  genuine final prose reply.
 - It **will** warn on any turn where the model legitimately doesn't echo the
   token — e.g. the first responses before it has adopted the instruction, or a
   one-off where it simply forgets (drift). Treat early warnings as expected noise,
